@@ -181,7 +181,7 @@ def get_text_item_color(item: TextItem) -> SolidColor:
     if isinstance(item, TextItem):
         if hasattr(item, 'color'):
             return item.color
-        print(f"Couldn't retrieve color of TextItem!")
+        print("Couldn't retrieve color of TextItem!")
     return rgb_black()
 
 

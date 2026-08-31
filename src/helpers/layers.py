@@ -61,7 +61,7 @@ def getLayer(
                     layer_set = g
             return layer_set.artLayers[name]
         # ArtLayer can't be located
-        raise OSError(f"ArtLayer invalid")
+        raise OSError("ArtLayer invalid")
     except PS_EXCEPTIONS:
         # Layer couldn't be found
         if ENV.DEV_MODE:
@@ -109,7 +109,7 @@ def getLayerSet(
             # LayerSet object given
             return group.layerSets[name]
         # LayerSet can't be located
-        raise OSError(f"LayerSet invalid")
+        raise OSError("LayerSet invalid")
     except PS_EXCEPTIONS:
         # LayerSet couldn't be found
         if ENV.DEV_MODE:

@@ -978,7 +978,7 @@ class ProxyshopGUIApp(App):
             return
 
         # Missing fonts
-        self.console.update(f"Fonts ... {msg_warn(f'Missing or outdated fonts:')}", end='')
+        self.console.update(f"Fonts ... {msg_warn('Missing or outdated fonts:')}", end='')
         if missing:
             self.console.update(
                 get_bullet_points([f"{f['name']} — {msg_warn('Not Installed')}" for f in missing.values()]), end="")
