@@ -15,6 +15,11 @@
 .PARAMETER Name
     Name of the shortcut. Defaults to 'Proxyshop'.
 
+.PARAMETER PythonPath
+    Full path to the environment's python.exe, skipping automatic detection. Use this
+    if Poetry cannot be found or its output cannot be interpreted. Get the value with:
+    poetry run python -c "import sys; print(sys.executable)"
+
 .PARAMETER Console
     Use python.exe instead of pythonw.exe, so the app runs with a console window
     attached. Use this when the app fails to start and you need to see the error.
@@ -34,6 +39,7 @@
 [CmdletBinding()]
 param(
     [string] $Name = 'Proxyshop',
+    [string] $PythonPath,
     [switch] $Console,
     [switch] $Desktop
 )
@@ -51,26 +57,40 @@ if (-not (Test-Path $Entry)) {
 # Ask the environment's own interpreter where it lives. Reading the path out of
 # `poetry env info` is unreliable, because Poetry mixes advisory lines into its output,
 # such as when the active Python is unsupported and it selects a different one.
+if ($PythonPath) {
+    if (-not [System.IO.File]::Exists($PythonPath)) {
+        throw "No interpreter found at '$PythonPath'."
+    }
+    $Output = @($PythonPath)
+} else {
+    $Output = $null
+}
 Push-Location $Repo
 try {
     # A native command writing to stderr must not abort the script here
-    $Previous, $ErrorActionPreference = $ErrorActionPreference, 'Continue'
-    $Output = & poetry run python -c "import sys; print(sys.executable)" 2>&1
-    $ErrorActionPreference = $Previous
+    if (-not $Output) {
+        $Previous, $ErrorActionPreference = $ErrorActionPreference, 'Continue'
+        $Output = & poetry run python -c "import sys; print(sys.executable)" 2>&1
+        $ErrorActionPreference = $Previous
+    }
 } catch {
     throw "Could not run Poetry. Install it first, see the setup guide in README.md."
 } finally {
     Pop-Location
 }
 
-# Advisory lines are discarded by keeping only output which is a real file
+# Advisory lines are discarded by keeping only output which is a real file.
+# `File.Exists` is used rather than `Test-Path`, which throws on a value containing
+# characters illegal in a path. Poetry's advisory text contains them, for example the
+# '<' and '>' in a version constraint such as (>=3.10,<3.13).
 $Python = $Output |
     ForEach-Object { $_.ToString().Trim() } |
-    Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+    Where-Object { $_.EndsWith('.exe') -and [System.IO.File]::Exists($_) } |
     Select-Object -Last 1
 
 if (-not $Python) {
-    throw ("Could not determine the environment's Python interpreter. Run 'poetry install' first.`n" +
+    throw ("Could not determine the environment's Python interpreter.`n" +
+           "Run 'poetry install' first, or pass the interpreter directly with -PythonPath.`n" +
            "Poetry returned:`n" + ($Output | Out-String))
 }
 
