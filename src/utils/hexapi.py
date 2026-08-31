@@ -176,7 +176,7 @@ def update_hexproof_cache() -> tuple[bool, Optional[str]]:
         tuple: A tuple containing the boolean success state of the update, and a string message
             explaining the error if one occurred.
     """
-    meta, set_data, updated = {}, {}, False
+    meta, updated = {}, False
     with suppress(Exception):
         meta: dict[str, Hexproof.Meta] = get_metadata()
 

@@ -11,7 +11,6 @@ import warnings
 import logging
 import json
 import csv
-import os
 
 # Third Party Imports
 from photoshop.api._artlayer import ArtLayer

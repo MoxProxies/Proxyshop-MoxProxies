@@ -699,7 +699,7 @@ class AppPlugin:
                 f.write('from .templates import *')
 
         # Attempt to load this module
-        self._module = import_package(
+        self._module: ModuleType = import_package(
             name=self.module_name,
             path=self.module_path,
             hotswap=hotswap)
