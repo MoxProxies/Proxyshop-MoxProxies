@@ -42,7 +42,7 @@ def build_app(version: Optional[str] = None, beta: bool = False, console: bool =
     name='build',
     help='Command utilities for building and managing release files.',
     commands=dict(
-        app=build_release
+        app=build_app
     )
 )
 def build_cli() -> None:
