@@ -16,7 +16,7 @@ If you need help with this app or wish to troubleshoot an issue, [please join ou
 </div>
 
 # 🛠️ Requirements
-- Photoshop (2017-2024 Supported)
+- Photoshop (2017-2026 Supported)
 - Windows (currently incompatible with Mac/Linux)
 - [The Photoshop templates](https://drive.google.com/drive/u/1/folders/1moEdGmpAJloW4htqhrdWZlleyIop_z1W) (Can be downloaded in the app)
 - Required fonts (included in `fonts/`):
