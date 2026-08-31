@@ -81,7 +81,7 @@ class ScryfallException(RequestException):
         msg = 'Scryfall request failed!'
         if any(params.values()):
             # List the params provided
-            msg += f'\nParams: '
+            msg += '\nParams: '
             p = [f"{k}: '{v}'" for k, v in params.items() if v]
             msg += ', '.join(p)
         if e and isinstance(e, RequestException) and e.request:

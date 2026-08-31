@@ -500,7 +500,7 @@ def log_all_template_fonts() -> dict:
 
     # Log a sorted master list
     master: dict[str, list] = {k: v for k, v in sorted(master.items(), key=lambda item: len(item[1]))}
-    with open(f'logs/FONTS.json', 'w', encoding='utf-8') as f:
+    with open('logs/FONTS.json', 'w', encoding='utf-8') as f:
         json.dump(master, f, indent=2)
     return master
 

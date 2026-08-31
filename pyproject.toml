@@ -90,6 +90,7 @@ line-length = 120
 
 [tool.ruff.lint]
 # Critical checks only: syntax errors, undefined names, invalid comparisons,
-# statements used outside a valid context, and definitions which shadow an earlier
-# one. Star imports (F403) are used deliberately by the template and plugin modules.
-select = ["E9", "F63", "F7", "F82", "F811"]
+# statements used outside a valid context, definitions which shadow an earlier one,
+# and f-strings which interpolate nothing. Star imports (F403) are used deliberately
+# by the template and plugin modules.
+select = ["E9", "F63", "F7", "F82", "F811", "F541"]

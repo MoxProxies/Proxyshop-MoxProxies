@@ -54,13 +54,13 @@ def test_all_cases() -> bool:
 
             # Log what we expect
             if not result_expected:
-                logr.warning(f"This card doesn't have italic text!")
+                logr.warning("This card doesn't have italic text!")
             else:
                 logr.warning(f"Italic strings expected: {msg_expected}")
 
             # Log what we found
             if not result_actual:
-                logr.warning(f"No italic strings were found!")
+                logr.warning("No italic strings were found!")
             else:
                 logr.warning(f"Italic strings found: {msg_actual}")
 

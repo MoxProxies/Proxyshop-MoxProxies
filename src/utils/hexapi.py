@@ -117,7 +117,7 @@ def get_metadata() -> dict[str, Hexproof.Meta]:
     if res.status_code == 200:
         return {k: Hexproof.Meta(**v) for k, v in res.json().items()}
     raise RequestException(
-        res.json().get('details', f"Failed to get metadata!"),
+        res.json().get('details', "Failed to get metadata!"),
         response=res)
 
 
@@ -135,7 +135,7 @@ def get_sets() -> dict:
     if res.status_code == 200:
         return res.json()
     raise RequestException(
-        res.json().get('details', f'Failed to get set data!'),
+        res.json().get('details', 'Failed to get set data!'),
         response=res)
 
 
