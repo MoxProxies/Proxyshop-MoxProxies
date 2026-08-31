@@ -908,7 +908,7 @@ class UniversesBeyondTemplate(VectorTransformMod, VectorTemplate):
         """Optional[LayerSet]: No background for 'Colorless' cards."""
         if self.is_colorless:
             return
-        return cast(super().background_group, Optional[LayerSet])
+        return cast(Optional[LayerSet], super().background_group)
 
     """
     * Masks
@@ -1502,7 +1502,7 @@ class BorderlessVectorTemplate(
             return
         if self.is_textless and self.is_pt_enabled:
             return psd.getLayerSet(f'{LAYERS.PT_BOX} {LAYERS.TEXTLESS}')
-        return cast(super().pt_group, Optional[LayerSet])
+        return cast(Optional[LayerSet], super().pt_group)
 
     @cached_property
     def crown_group(self) -> LayerSet:
@@ -1514,7 +1514,7 @@ class BorderlessVectorTemplate(
         """Optional[LayerSet]: Textbox group if not a 'Textless' render."""
         if self.is_textless:
             return
-        return cast(super().textbox_group, Optional[LayerSet])
+        return cast(Optional[LayerSet], super().textbox_group)
 
     """
     * Text Layers
