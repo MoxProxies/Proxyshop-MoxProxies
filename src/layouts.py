@@ -36,6 +36,19 @@ from src.frame_logic import (
     get_mana_cost_colors)
 
 """
+* Fork Customizations
+
+Values hardcoded by this fork, overriding the card data returned by Scryfall. Kept
+together so they survive being merged with upstream.
+"""
+
+# Artist credited on every card, replaces the real artist
+PROXY_ARTIST = 'MoxProxies'
+
+# Printed in place of the collector number and set card count
+PROXY_COLLECTOR_TEXT = 'PROXY CARD'
+
+"""
 * Layout Processing
 """
 
@@ -187,6 +200,16 @@ class NormalLayout:
     def set(self) -> str:
         """Card set code, uppercase enforced, falls back to 'MTG' if missing."""
         return self.scryfall.get('set', 'MTG').upper()
+
+    @cached_property
+    def set_printed(self) -> str:
+        """str: Set code printed on the card, hardcoded by this fork to the current year.
+
+        Notes:
+            Only the printed value is replaced. `set` still reports the real set code, so
+            output file names, watermark lookups, and symbol lookups are unaffected.
+        """
+        return str(date.today().year)
 
     @cached_property
     def set_data(self) -> dict:
@@ -398,19 +421,9 @@ class NormalLayout:
 
     @cached_property
     def artist(self) -> str:
-        """Card artist name, prioritizes user provided artist name. Controls for duplicate last names."""
-        if self.file.get('artist'):
-            return self.file['artist']
-
-        # Check for duplicate last names
-        artist, count = self.card.get('artist', 'Unknown'), []
-        if '&' in artist:
-            for w in artist.split(' '):
-                if w in count:
-                    count.remove(w)
-                count.append(w)
-            return ' '.join(count)
-        return artist
+        """str: Card artist name, hardcoded by this fork. Overrides the real artist and
+        any artist provided in the art file name."""
+        return PROXY_ARTIST
 
     @cached_property
     def collector_number(self) -> int:
@@ -442,12 +455,9 @@ class NormalLayout:
 
     @cached_property
     def collector_data(self) -> str:
-        """str: Formatted collector info line, e.g. 050/230 M."""
-        if self.card_count:
-            return f"{str(self.collector_number).zfill(3)}/{str(self.card_count).zfill(3)} {self.rarity_letter}"
-        if self.collector_number_raw:
-            return f"{self.rarity_letter} {str(self.collector_number).zfill(4)}"
-        return ''
+        """str: Formatted collector info line, hardcoded by this fork to mark the card as
+        a proxy rather than give it a collector number, e.g. 'R — PROXY CARD'."""
+        return f'{self.rarity_letter} — {PROXY_COLLECTOR_TEXT}'
 
     @cached_property
     def creator(self) -> str:
@@ -1301,26 +1311,6 @@ class SplitLayout(NormalLayout):
         return self.scryfall.get('image_uris', {}).get('large', '')
 
     """
-    * Collector Info
-    """
-
-    @cached_property
-    def artist(self) -> str:
-        """Card artist name, use Scryfall raw data instead of 'card' data."""
-        if self.file.get('artist'):
-            return self.file['artist']
-
-        # Check for duplicate last names
-        artist, count = self.scryfall.get('artist', 'Unknown'), []
-        if '&' in artist:
-            for w in artist.split(' '):
-                if w in count:
-                    count.remove(w)
-                count.append(w)
-            return ' '.join(count)
-        return artist
-
-    """
     * Symbols
     """
 
@@ -1500,12 +1490,8 @@ class TokenLayout(NormalLayout):
 
     @cached_property
     def collector_data(self) -> str:
-        """str: Formatted collector info line, rarity letter is always T, e.g. 050/230 T."""
-        if self.card_count:
-            return f'{str(self.collector_number).zfill(3)}/{str(self.card_count).zfill(3)} T'
-        if self.collector_number_raw:
-            return f'T {str(self.collector_number).zfill(4)}'
-        return ''
+        """str: Formatted collector info line, rarity letter is always T, e.g. 'T — PROXY CARD'."""
+        return f'T — {PROXY_COLLECTOR_TEXT}'
 
     @cached_property
     def set(self) -> str:

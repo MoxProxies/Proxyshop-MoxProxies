@@ -461,7 +461,7 @@ class ClassicTemplate(NormalTemplate):
         if self.layout.lang != 'en':
             psd.replace_text(info, 'EN', self.layout.lang.upper())
         psd.replace_text(artist, "Artist", self.layout.artist)
-        psd.replace_text(info, 'SET', self.layout.set)
+        psd.replace_text(info, 'SET', self.layout.set_printed)
         return [artist, info]
 
     def collector_info_authentic(self) -> list[ArtLayer]:
@@ -481,7 +481,7 @@ class ClassicTemplate(NormalTemplate):
 
         # Apply the collector info
         psd.replace_text(artist, 'Artist', self.layout.artist)
-        psd.replace_text(info, 'SET', self.layout.set)
+        psd.replace_text(info, 'SET', self.layout.set_printed)
         psd.replace_text(info, 'NUM', self.layout.collector_data)
         return [artist, info]
 
