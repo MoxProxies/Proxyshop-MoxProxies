@@ -80,3 +80,6 @@ version_files = [
 
 [tool.poetry.scripts]
 proxyshop = 'main:launch_cli'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
