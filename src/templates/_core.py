@@ -912,7 +912,7 @@ class BaseTemplate:
         if self.layout.lang != "en":
             psd.replace_text(set_layer, "EN", self.layout.lang.upper())
         psd.replace_text(artist_layer, "Artist", self.layout.artist)
-        set_TI.contents = self.layout.set + set_TI.contents
+        set_TI.contents = self.layout.set_printed + set_TI.contents
 
     def collector_info_authentic(self) -> None:
         """Called to generate realistic collector info."""
@@ -942,7 +942,7 @@ class BaseTemplate:
 
         # Apply the collector info
         top.contents = self.layout.collector_data
-        psd.replace_text(bottom, "SET", self.layout.set)
+        psd.replace_text(bottom, "SET", self.layout.set_printed)
         psd.replace_text(bottom, "Artist", self.layout.artist)
 
     def collector_info_artist_only(self) -> None:
