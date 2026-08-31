@@ -351,7 +351,7 @@ class ProxyshopGUIApp(App):
         files_webp = [Path(folder, f) for f in all_files if f.endswith('.webp') and not f.startswith('!')]
 
         # Check if Photoshop version supports webp
-        if files_webp and not self.app.supports_webp:
+        if files_webp and not self.app.supports_webp():
             self.console.update(msg_warn('Skipped WEBP image, WEBP requires Photoshop ^23.2.0'))
         elif files_webp:
             files.extend(files_webp)
