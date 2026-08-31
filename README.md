@@ -136,6 +136,19 @@ See the badge above for supported Python versions.
     ```
 7. Refer to the [usage guide](#-using-the-proxyshop-gui) for navigating the GUI.
 
+## Running checks
+These are the checks CI runs on every pull request. They don't require Photoshop, so they
+run on any platform.
+```bash
+# Byte-compile every module, lint, and run the tests
+python -m compileall -q src plugins main.py
+ruff check .
+pytest
+```
+Note that the test suite covers only platform independent logic, such as Photoshop
+version handling. Anything which talks to Photoshop over COM has to be verified by
+running the app on Windows.
+
 # 💾 Download Templates Manually
 If you wish to download the templates manually, visit [this link](https://drive.google.com/drive/u/1/folders/1sgJ3Xu4FabxNgDl0yeI7OjDZ7fqlI4p3). These archives must be extracted to the `/templates` 
 directory. The archives found within the **Investigamer** and **SilvanMTG** drive folders must be extracted to 
