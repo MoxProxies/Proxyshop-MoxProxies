@@ -142,7 +142,7 @@ class VectorNyxMod (NyxMod, VectorTemplate):
         if self.is_nyx:
             if layer := psd.getLayerSet(LAYERS.NYX):
                 return layer
-        return cast(super().background_group, Optional[LayerSet])
+        return cast(Optional[LayerSet], super().background_group)
 
 
 class CompanionMod (BaseTemplate):
