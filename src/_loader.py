@@ -19,6 +19,7 @@ from typing import Optional, TypedDict, NotRequired, Any, Callable, Union
 import yarl
 from omnitils.api.gdrive import gdrive_get_metadata, gdrive_download_file
 from omnitils.files import load_data_file, ensure_file, mkdir_full_perms
+from omnitils.files.archive import unpack_archive
 from omnitils.modules import get_local_module, import_package, import_module_from_path
 from omnitils.strings import normalize_ver
 
@@ -875,6 +876,25 @@ class AppTemplate:
             return root / self.update_file
         return
 
+    def get_path_download(self) -> Optional[Path]:
+        """Prepares the path an update should be downloaded to.
+
+        Notes:
+            `gdrive_download_file` compares the destination against other files using
+            `os.path.samefile`, both when looking for a resumable download and before
+            moving the completed download into place. Stat'ing a destination that doesn't
+            exist raises FileNotFoundError, so an empty file is created up front.
+
+        Returns:
+            Path the update should be downloaded to, or None if no update is available.
+        """
+        path = self.path_download
+        if path is None:
+            return None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+        return path
+
     """
     * Template Requirements
     """
@@ -1063,27 +1083,33 @@ class AppTemplate:
         self.update_error = None
         try:
 
+            # No update file to download
+            path = self.get_path_download()
+            if path is None:
+                self.update_error = 'No update is available for this template.'
+                return False
+
             # Download using Google Drive
-            result = gdrive_download_file(
+            if self.google_drive_id and gdrive_download_file(
                 url=self.url_google_drive,
-                path=self.path_download,
+                path=path,
                 path_cookies=PATH.LOGS_COOKIES,
                 callback=callback,
-                # Resuming looks for a partial download by comparing every file in the
-                # directory against the destination, which doesn't exist yet, raising
-                # FileNotFoundError. See `omnitils.files.get_temporary_file`.
+                # Resuming compares every file in the directory against the destination,
+                # see `get_path_download` for why that comparison has to be avoided.
                 allow_resume=False
-            ) if self.google_drive_id else False
+            ):
+                # Google Drive delivers the archive as-is, unlike an Amazon S3 download,
+                # which `download_cloudfront` unpacks itself.
+                unpack_archive(path)
+                return True
 
             # Google Drive failed or isn't an option, download from Amazon S3
-            if not result:
-                result = download_cloudfront(
+            return bool(
+                download_cloudfront(
                     url=self.url_amazon,
-                    path=self.path_download,
-                    callback=callback)
-
-            # Return result status
-            return result
+                    path=path,
+                    callback=callback))
 
         # Exception caught while downloading / unpacking
         except Exception as e:
