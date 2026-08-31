@@ -26,7 +26,7 @@ jobs:
       - name: Install check dependencies
         # Proxyshop's runtime dependencies are Windows only, so this installs just the
         # tools needed to lint, byte-compile, and run the platform independent tests.
-        run: python -m pip install --upgrade pip ruff pytest packaging
+        run: python -m pip install --upgrade pip ruff pytest packaging pyyaml
 
       - name: Byte-compile
         run: python -m compileall -q src plugins main.py

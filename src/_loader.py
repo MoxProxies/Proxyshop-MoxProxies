@@ -937,22 +937,29 @@ class AppTemplate:
 
     @cached_property
     def types_supported(self) -> list[str]:
-        """set[str]: A set of all types supported by this template."""
-        return list({
+        """list[str]: Every type supported by this template, in manifest order."""
+        return list(dict.fromkeys(
             t for class_map in self.manifest_map.values()
             for types in class_map.values()
             for t in types
-        })
+        ))
 
     @cached_property
     def all_names(self) -> list[str]:
-        """set[str]: A set of all display names used by this template."""
-        return list({name for name in self.manifest_map.keys()})
+        """list[str]: Every display name used by this template, in manifest order.
+
+        Notes:
+            Order matters. `generate_template_name` names the template after the first
+            entry, so building this from a set would let Python's per-process string
+            hashing rename the template between launches.
+        """
+        return list(self.manifest_map.keys())
 
     @cached_property
     def all_classes(self) -> list[str]:
-        """set[str]: A set of all python classes used by this template."""
-        return list({cls_name for class_map in self.manifest_map.values() for cls_name in class_map.keys()})
+        """list[str]: Every python class used by this template, in manifest order."""
+        return list(dict.fromkeys(
+            cls_name for class_map in self.manifest_map.values() for cls_name in class_map.keys()))
 
     """
     * Template Utils
