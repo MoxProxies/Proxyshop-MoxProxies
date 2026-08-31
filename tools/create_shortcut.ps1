@@ -48,24 +48,39 @@ if (-not (Test-Path $Entry)) {
     throw "Could not find main.py at '$Entry'. Is this script still in the repository's tools folder?"
 }
 
-# Locate the virtual environment Poetry created for this project
+# Ask the environment's own interpreter where it lives. Reading the path out of
+# `poetry env info` is unreliable, because Poetry mixes advisory lines into its output,
+# such as when the active Python is unsupported and it selects a different one.
 Push-Location $Repo
 try {
-    $Venv = (& poetry env info --path 2>$null | Out-String).Trim()
+    # A native command writing to stderr must not abort the script here
+    $Previous, $ErrorActionPreference = $ErrorActionPreference, 'Continue'
+    $Output = & poetry run python -c "import sys; print(sys.executable)" 2>&1
+    $ErrorActionPreference = $Previous
 } catch {
     throw "Could not run Poetry. Install it first, see the setup guide in README.md."
 } finally {
     Pop-Location
 }
-if (-not $Venv -or -not (Test-Path $Venv)) {
-    throw "Poetry reported no virtual environment for this project. Run 'poetry install' first."
+
+# Advisory lines are discarded by keeping only output which is a real file
+$Python = $Output |
+    ForEach-Object { $_.ToString().Trim() } |
+    Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
+    Select-Object -Last 1
+
+if (-not $Python) {
+    throw ("Could not determine the environment's Python interpreter. Run 'poetry install' first.`n" +
+           "Poetry returned:`n" + ($Output | Out-String))
 }
 
-# pythonw.exe runs without a console, matching how the packaged app is built
+# pythonw.exe runs without a console, matching how the packaged app is built.
+# It sits beside python.exe, so the interpreter's own folder is used rather than
+# assuming the environment's layout.
 $Interpreter = if ($Console) { 'python.exe' } else { 'pythonw.exe' }
-$Target = Join-Path $Venv "Scripts\$Interpreter"
+$Target = Join-Path (Split-Path -Parent $Python) $Interpreter
 if (-not (Test-Path $Target)) {
-    throw "Could not find $Interpreter at '$Target'. Try recreating the environment with 'poetry install'."
+    throw "Could not find $Interpreter beside '$Python'. Try recreating the environment with 'poetry install'."
 }
 
 # Build the shortcut
