@@ -80,3 +80,16 @@ version_files = [
 
 [tool.poetry.scripts]
 proxyshop = 'main:launch_cli'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# Critical checks only: syntax errors, undefined names, invalid comparisons, and
+# statements used outside a valid context. Star imports (F403) are used deliberately
+# by the template and plugin modules.
+select = ["E9", "F63", "F7", "F82"]

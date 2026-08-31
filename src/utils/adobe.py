@@ -5,16 +5,14 @@
 from _ctypes import COMError, ArgumentError
 from contextlib import suppress
 from ctypes import c_uint32
-from datetime import date
 from functools import cache, cached_property
 from os import environ
-import re
 from typing import Union, Any, Optional, TypedDict, Callable
 import winreg
 
 # Third Party
 from comtypes.client.lazybind import Dispatch
-from packaging.version import parse, Version
+from packaging.version import Version
 from photoshop.api import (
     ActionDescriptor,
     ActionReference,
@@ -31,6 +29,16 @@ from win32api import FormatMessage
 
 # Local Imports
 from src._state import AppEnvironment
+from src.utils.ps_version import (
+    check_version_requirement,
+    get_photoshop_version_year,
+    normalize_photoshop_version,
+    parse_photoshop_version,
+    sort_photoshop_app_ids,
+    PS_VERSION_GENERATIVE_FILL,
+    PS_VERSION_MAPPINGS,
+    PS_VERSION_TARGET_TEXT_REPLACE,
+    PS_VERSION_WEBP)
 
 """
 * Types & Definitions
@@ -110,100 +118,11 @@ class LayerDimensions(TypedDict):
 * Photoshop Version Support
 """
 
-# Oldest Photoshop release Proxyshop supports.
-PS_YEAR_MIN = 2017
-
-# COM program ID of the oldest supported release, e.g. Photoshop.Application.110
-PS_APP_ID_MIN = 110
-
-# Each yearly Photoshop release raises the COM program ID by this amount, e.g.
-# 2017 -> 110, 2020 -> 140, 2024 -> 180, 2025 -> 190, 2026 -> 200
-PS_APP_ID_STEP = 10
-
-# Difference between a Photoshop release year and its internal version number,
-# e.g. Photoshop 2025 -> 26.0.0, Photoshop 2026 -> 27.0.0
-PS_YEAR_OFFSET = 1999
-
-# Newest release known at the time of writing, guarantees a mapping for it even
-# if the system clock is set behind.
-PS_YEAR_KNOWN = 2026
-
-
-def get_photoshop_app_id(year: int) -> str:
-    """Calculates the COM program ID suffix used by a given Photoshop release.
-
-    Args:
-        year: Photoshop release year, e.g. 2025.
-
-    Returns:
-        COM program ID suffix, e.g. '190' for `Photoshop.Application.190`.
-    """
-    return str(PS_APP_ID_MIN + ((year - PS_YEAR_MIN) * PS_APP_ID_STEP))
-
-
-def get_photoshop_version_mappings(year_max: Optional[int] = None) -> dict[str, str]:
-    """Maps every supported Photoshop release year to its COM program ID.
-
-    Args:
-        year_max: Newest release year to generate a mapping for. Uses next year if not
-            provided, so releases which ship ahead of a Proxyshop update are covered.
-
-    Returns:
-        Dict mapping release year to COM program ID, e.g. {'2025': '190'}.
-    """
-    year_max = max(year_max or (date.today().year + 1), PS_YEAR_KNOWN)
-    return {str(year): get_photoshop_app_id(year) for year in range(PS_YEAR_MIN, year_max + 1)}
-
-
-# Photoshop release year -> COM program ID, e.g. '2025' -> '190'
-PS_VERSION_MAPPINGS: dict[str, str] = get_photoshop_version_mappings()
-
-# COM program ID -> Photoshop release year, e.g. '190' -> '2025'
-PS_APP_ID_MAPPINGS: dict[str, str] = {v: k for k, v in PS_VERSION_MAPPINGS.items()}
-
-# Extend the mappings bundled with `photoshop-python-api`, which only cover the releases
-# known when that package was published. Existing entries are left untouched.
+# Extend the release year -> COM program ID mappings bundled with `photoshop-python-api`,
+# which only cover the releases known when that package was published. Existing entries
+# are left untouched.
 for _year, _app_id in PS_VERSION_MAPPINGS.items():
     PHOTOSHOP_VERSION_MAPPINGS.setdefault(_year, _app_id)
-
-
-def normalize_photoshop_version(value: Any) -> Optional[str]:
-    """Normalizes a user provided Photoshop version to a release year, the key format
-    used by the `photoshop-python-api` version mappings.
-
-    Args:
-        value: Photoshop version provided by the user. Accepts a release year, e.g.
-            '2025' or 'CC 2019', an internal version number, e.g. '26' or '26.1.0',
-            or a COM program ID, e.g. '190'.
-
-    Returns:
-        Photoshop release year, e.g. '2025', or None if the value was empty or
-            couldn't be recognized as a supported release.
-    """
-    if value in (None, ''):
-        return None
-    value = str(value).strip()
-
-    # Release year, e.g. '2025' or 'CC 2019'
-    if found := re.search(r'\b(20\d{2})\b', value):
-        year = found.group(1)
-        return year if year in PS_VERSION_MAPPINGS else None
-
-    # Leading number, e.g. '190' or '26.1.0'
-    if found := re.match(r'^(\d+)', value):
-        number = found.group(1)
-
-        # COM program ID, e.g. '190'
-        if number in PS_APP_ID_MAPPINGS:
-            return PS_APP_ID_MAPPINGS[number]
-
-        # Internal version number, e.g. '26'
-        year = str(int(number) + PS_YEAR_OFFSET)
-        if year in PS_VERSION_MAPPINGS:
-            return year
-
-    # Unrecognized version, fall back to automatic detection
-    return None
 
 
 """
@@ -264,18 +183,15 @@ class ApplicationHandler(Application):
         Returns:
             List of Photoshop COM program ID's, with a blank ID as a final fallback.
         """
-        versions: list[str] = []
+        app_ids: list[str] = []
         with suppress(Exception):
             key = self._open_key(self._reg_path)
-            for i in range(winreg.QueryInfoKey(key)[0]):
-                app_id = winreg.EnumKey(key, i).split('.')[0]
-                if app_id.isdigit() and app_id not in versions:
-                    versions.append(app_id)
-        if not versions:
+            app_ids = [winreg.EnumKey(key, i).split('.')[0] for i in range(winreg.QueryInfoKey(key)[0])]
+        if not app_ids:
             self._logger.debug('Unable to find Photoshop version number in HKEY_LOCAL_MACHINE registry!')
 
         # Newest release first, version-less program ID as a final fallback
-        return [*sorted(versions, key=int, reverse=True), '']
+        return [*sort_photoshop_app_ids(app_ids), '']
 
 
 class PhotoshopHandler(ApplicationHandler):
@@ -496,9 +412,7 @@ class PhotoshopHandler(ApplicationHandler):
                 isn't reachable or reported a version that couldn't be parsed.
         """
         if self._version is None:
-            with suppress(Exception):
-                # Photoshop can report build info alongside the version, e.g. "26.1.0 20241021.r.55"
-                self._version = parse(str(self.version).strip().split(' ')[0])
+            self._version = parse_photoshop_version(self.version)
         return self._version
 
     def get_version_year(self) -> Optional[str]:
@@ -507,22 +421,19 @@ class PhotoshopHandler(ApplicationHandler):
         Returns:
             Release year, e.g. '2025', or None if the version couldn't be determined.
         """
-        version = self.get_version_number()
-        if version is None:
-            return None
-        return str(version.major + PS_YEAR_OFFSET)
+        return get_photoshop_version_year(self.get_version_number())
 
     def supports_target_text_replace(self) -> bool:
         """bool: Checks if Photoshop version supports targeted text replacement."""
-        return self.version_meets_requirement('22.0.0')
+        return self.version_meets_requirement(PS_VERSION_TARGET_TEXT_REPLACE)
 
     def supports_webp(self) -> bool:
         """bool: Checks if Photoshop version supports WEBP files."""
-        return self.version_meets_requirement('23.2.0')
+        return self.version_meets_requirement(PS_VERSION_WEBP)
 
     def supports_generative_fill(self) -> bool:
         """bool: Checks if Photoshop version supports Generative Fill."""
-        return self.version_meets_requirement('24.6.0')
+        return self.version_meets_requirement(PS_VERSION_GENERATIVE_FILL)
 
     def version_meets_requirement(self, value: str) -> bool:
         """Checks if Photoshop version meets or exceeds required value.
@@ -536,10 +447,7 @@ class PhotoshopHandler(ApplicationHandler):
                 future release reporting an unexpected version string isn't mistaken
                 for an unsupported one.
         """
-        version = self.get_version_number()
-        if version is None:
-            return True
-        return version >= parse(value)
+        return check_version_requirement(self.get_version_number(), value)
 
     """
     * Dimensions
