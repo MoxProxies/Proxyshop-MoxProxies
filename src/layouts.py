@@ -1259,7 +1259,6 @@ class SplitLayout(NormalLayout):
     is_creature: bool = False
     is_legendary: bool = False
     is_companion: bool = False
-    is_colorless: bool = False
     toughness: str = ''
     power: str = ''
 
@@ -1443,7 +1442,13 @@ class SplitLayout(NormalLayout):
 
     @cached_property
     def is_colorless(self) -> list[bool]:
-        """Both sides colorless check."""
+        """Both sides colorless check.
+
+        Notes:
+            Returns one value per side, matching `is_hybrid`. `BaseTemplate.is_colorless`
+            annotates this as a bool, so treating it as one on a split card reads a
+            populated list as True.
+        """
         return [f['is_colorless'] for f in self.frame]
 
     """
