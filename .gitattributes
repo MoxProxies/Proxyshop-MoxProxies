@@ -12,6 +12,9 @@
 *.pyi    text diff=python
 *.spec   text diff=python
 
+# Windows scripts, checked out with CRLF regardless of the user's autocrlf setting
+*.ps1    text eol=crlf
+
 # Binary files
 # ============
 *.db     binary

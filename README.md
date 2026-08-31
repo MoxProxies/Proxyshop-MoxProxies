@@ -128,13 +128,20 @@ See the badge above for supported Python versions.
 6. Run the app.
     ```bash
     # OPTION 1) Execute via poetry
-    poetry run main.py
-    
-    # OPTION 2) Enter the poetry environment, then execute with cli
-    poetry shell
-    proxyshop gui
+    poetry run python main.py
+
+    # OPTION 2) Execute the cli entry point
+    poetry run proxyshop gui
     ```
-7. Refer to the [usage guide](#-using-the-proxyshop-gui) for navigating the GUI.
+7. Optionally, create a shortcut you can pin to the taskbar. It launches the app
+    without a console window, using the same environment Poetry installed.
+    ```powershell
+    .\tools\create_shortcut.ps1
+    ```
+    Then search for **Proxyshop** in Start, right-click it, and choose *Pin to taskbar*.
+    Pass `-Console` to build a second shortcut which keeps a console window open for
+    troubleshooting.
+8. Refer to the [usage guide](#-using-the-proxyshop-gui) for navigating the GUI.
 
 ## Running checks
 These are the checks CI runs on every pull request. They don't require Photoshop, so they
