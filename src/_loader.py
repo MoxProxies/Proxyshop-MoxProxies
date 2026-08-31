@@ -473,6 +473,9 @@ class AppPlugin:
         self.con: AppConstants = con
         self.env: AppEnvironment = env
 
+        # Reason the last update attempt failed, if any
+        self.update_error: Optional[str] = None
+
         # Ensure path exists
         if not path.is_dir():
             raise FileNotFoundError(f"Couldn't locate plugin path: {str(path)}")
@@ -1057,6 +1060,7 @@ class AppTemplate:
         Returns:
             True if succeeded, False if failed.
         """
+        self.update_error = None
         try:
 
             # Download using Google Drive
@@ -1064,7 +1068,11 @@ class AppTemplate:
                 url=self.url_google_drive,
                 path=self.path_download,
                 path_cookies=PATH.LOGS_COOKIES,
-                callback=callback
+                callback=callback,
+                # Resuming looks for a partial download by comparing every file in the
+                # directory against the destination, which doesn't exist yet, raising
+                # FileNotFoundError. See `omnitils.files.get_temporary_file`.
+                allow_resume=False
             ) if self.google_drive_id else False
 
             # Google Drive failed or isn't an option, download from Amazon S3
@@ -1079,7 +1087,9 @@ class AppTemplate:
 
         # Exception caught while downloading / unpacking
         except Exception as e:
-            print(e)
+            print_tb(e.__traceback__)
+            self.update_error = str(e) or e.__class__.__name__
+            print(self.update_error)
         return False
 
     def mark_updated(self) -> None:
