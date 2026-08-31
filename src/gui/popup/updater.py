@@ -106,6 +106,9 @@ class UpdateEntry(BoxLayout, GlobalAccess):
         # Failed
         download.clear_widgets()
         download.add_widget(Label(text=msg_error("FAILED"), markup=True))
+        self.console.update(
+            msg_error(f'Failed to download template: {self.name}') + (
+                f'\n{self.template.update_error}' if self.template.update_error else ''))
 
     async def mark_updated(self):
         """Update template version, remove pending update, and remove the template row."""
