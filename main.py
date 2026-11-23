@@ -5,6 +5,13 @@
 import os
 import sys
 
+# Launched windowless (pythonw.exe, e.g. from the app shortcut) there are no standard
+# streams, and the logger crashes adding a None sink. Point them at devnull instead.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+
 """
 * Launcher Funcs
 """
