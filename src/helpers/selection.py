@@ -20,7 +20,7 @@ from src import APP
 from src.utils.adobe import PS_EXCEPTIONS
 
 # Photoshop infrastructure
-cID, sID = APP.charIDtoTypeID, APP.stringIDToTypeID
+cID, sID = APP.charIDToTypeID, APP.stringIDToTypeID
 NO_DIALOG = DialogModes.DisplayNoDialogs
 
 """
