@@ -32,7 +32,7 @@ import src.helpers as psd
 from src.utils.adobe import LayerContainer
 
 # Photoshop infrastructure
-cID, sID = APP.charIDtoTypeID, APP.stringIDToTypeID
+cID, sID = APP.charIDToTypeID, APP.stringIDToTypeID
 NO_DIALOG = DialogModes.DisplayNoDialogs
 
 # Reference Box colors
