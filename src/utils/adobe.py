@@ -281,14 +281,20 @@ class PhotoshopHandler(ApplicationHandler):
         """Replace the existing Photoshop Application instance with a new one."""
         if not self.is_running():
             try:
-                # Load Photoshop and default preferences
+                # Load Photoshop
                 self._version = None
                 super(PhotoshopHandler, self).__init__(env=self._env)
-                self.preferences.rulerUnits = Units.Pixels
-                self.preferences.typeUnits = Units.Points
             except Exception as e:
                 # Photoshop is either busy or unresponsive
                 return OSError(get_photoshop_error_message(e))
+
+        # Measurements assume pixel rulers and point type. Apply these on every refresh, not
+        # only when Photoshop is reconnected, since the user may change them between renders.
+        try:
+            self.preferences.rulerUnits = Units.Pixels
+            self.preferences.typeUnits = Units.Points
+        except Exception as e:
+            return OSError(get_photoshop_error_message(e))
         return
 
     """
