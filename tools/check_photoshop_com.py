@@ -17,12 +17,14 @@ Usage:
     poetry run python tools/check_photoshop_com.py
 """
 # Standard Library
+import os
 import sys
 import winreg
 
 # Third Party
 from comtypes.automation import IDispatch
 from comtypes.client import CreateObject
+from comtypes.typeinfo import LoadTypeLibEx, REGKIND_NONE
 from comtypes.client.dynamic import _Dispatch as FullyDynamicDispatch
 from comtypes.client.lazybind import Dispatch as LazyDispatch
 
@@ -41,6 +43,89 @@ def get_registered_app_ids() -> list[str]:
     except OSError as e:
         print(f'  Could not read the registry: {e}')
     return sorted((i for i in app_ids if i.isdigit()), key=int, reverse=True)
+
+
+def read_key(root: int, path: str, value: str = '') -> str:
+    """Reads a value from the Windows registry.
+
+    Args:
+        root: Registry root key.
+        path: Path to the key.
+        value: Name of the value to read, blank for the key's default value.
+
+    Returns:
+        The value, or a blank string if it couldn't be read.
+    """
+    try:
+        with winreg.OpenKey(root, path) as key:
+            return str(winreg.QueryValueEx(key, value)[0])
+    except OSError:
+        return ''
+
+
+def get_install_path(app_id: str) -> str:
+    """Finds where a Photoshop release is installed.
+
+    Args:
+        app_id: Photoshop COM program ID, e.g. '210'.
+
+    Returns:
+        Path to the install directory, or a blank string.
+    """
+    return read_key(
+        winreg.HKEY_LOCAL_MACHINE,
+        f'SOFTWARE\\Adobe\\Photoshop\\{app_id}.0', 'ApplicationPath')
+
+
+def report_type_library(app_id: str) -> None:
+    """Reports where Photoshop's type library is registered and whether it loads.
+
+    Notes:
+        `comtypes` guesses at method and property names only when it can't read a type
+        library. 'Error loading type library/DLL' means the library is registered but
+        the file behind it can't be opened, which is worth telling apart from it not
+        being registered at all.
+
+    Args:
+        app_id: Photoshop COM program ID, e.g. '210'.
+    """
+    prog_id = f'Photoshop.Application.{app_id}'
+    clsid = read_key(winreg.HKEY_CLASSES_ROOT, f'{prog_id}\\CLSID')
+    print(f'  CLSID      : {clsid or "not registered"}')
+    if not clsid:
+        return
+
+    lib_id = read_key(winreg.HKEY_CLASSES_ROOT, f'CLSID\\{clsid}\\TypeLib')
+    version = read_key(winreg.HKEY_CLASSES_ROOT, f'CLSID\\{clsid}\\Version')
+    print(f'  TypeLib    : {lib_id or "no type library registered for this class"}')
+
+    # The path the registry points at, per architecture
+    registered: list[str] = []
+    if lib_id:
+        for arch in ('win64', 'win32'):
+            path = read_key(
+                winreg.HKEY_CLASSES_ROOT,
+                f'TypeLib\\{lib_id}\\{version or "1.0"}\\0\\{arch}')
+            if path:
+                exists = 'exists' if os.path.isfile(path) else 'MISSING FROM DISK'
+                print(f'  {arch:<11}: {path}  [{exists}]')
+                registered.append(path)
+        if not registered:
+            print(f'  path       : no path registered under version {version or "1.0"}')
+
+    # Candidates to load the library straight from a file, bypassing the registry
+    install = get_install_path(app_id)
+    candidates = [*registered]
+    if install:
+        candidates += [os.path.join(install, n) for n in ('Photoshop.exe', 'Photoshop.tlb')]
+    for path in dict.fromkeys(candidates):
+        if not os.path.isfile(path):
+            continue
+        try:
+            LoadTypeLibEx(path, REGKIND_NONE)
+            print(f'  LOADS OK   : {path}')
+        except Exception as e:
+            print(f'  cannot load: {path} -- {type(e).__name__}: {e}')
 
 
 def describe_dispatch(app_id: str) -> None:
@@ -76,6 +161,9 @@ def describe_dispatch(app_id: str) -> None:
             print(f'  {name:<11}: {getattr(app, name)}')
         except Exception as e:
             print(f'  {name:<11}: could not be read -- {type(e).__name__}')
+
+    if app_id and isinstance(app, FullyDynamicDispatch):
+        report_type_library(app_id)
 
 
 def main() -> int:
