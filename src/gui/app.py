@@ -318,12 +318,15 @@ class ProxyshopGUIApp(App):
                         # Cancel this operation
                         return
 
-                # Call the function
-                result = func(self, *args)
-
-                # Enable buttons / close document on exit
-                self.reset(enable_buttons=True, close_document=True)
-                return result
+                # Call the function, logging any error that would otherwise kill the thread silently
+                try:
+                    return func(self, *args)
+                except Exception as e:
+                    self.console.update(msg_error('Render process failed unexpectedly!'))
+                    self.console.log_exception(e)
+                finally:
+                    # Enable buttons / close document on exit
+                    self.reset(enable_buttons=True, close_document=True)
 
         return wrapper
 
@@ -441,10 +444,11 @@ class ProxyshopGUIApp(App):
 
             # Assign card as failure if template isn't installed
             if not temps[c.card_class]['object'].is_installed:
-                c = msg_error(
+                failed.append(msg_error(
                     msg=c.display_name,
                     reason=f"Template '{temps[c.card_class]['name']}' with type "
-                           f"'{c.card_class}' is not installed!")
+                           f"'{c.card_class}' is not installed!"))
+                continue
 
             # Map card to its template path and layout type
             layouts.setdefault(
