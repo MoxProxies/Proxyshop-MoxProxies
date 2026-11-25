@@ -11,6 +11,7 @@ from typing import Union, Any, Optional, TypedDict, Callable
 import winreg
 
 # Third Party
+from comtypes.client.dynamic import _Dispatch as FullyDynamicDispatch
 from comtypes.client.lazybind import Dispatch
 from packaging.version import Version
 from photoshop.api import (
@@ -123,6 +124,62 @@ class LayerDimensions(TypedDict):
 # are left untouched.
 for _year, _app_id in PS_VERSION_MAPPINGS.items():
     PHOTOSHOP_VERSION_MAPPINGS.setdefault(_year, _app_id)
+
+
+"""
+* Dynamic Dispatch Support
+"""
+
+
+def _eval_javascript(
+    self: Photoshop,
+    javascript: str,
+    Arguments: Any = None,
+    ExecutionMode: Any = None
+) -> str:
+    """Instructs Photoshop to execute JavaScript code.
+
+    Notes:
+        Replaces the `photoshop-python-api` implementation, which fails outright on any
+        install where `comtypes` falls back to its fully dynamic dispatch.
+
+        Photoshop doesn't implement `IDispatch::GetTypeInfo`, so that dispatch can't tell
+        a method from a property and fetches the name as a property first. Photoshop then
+        runs `doJavaScript` with no arguments and reports it as a plain 'Exception
+        occurred', which `comtypes` doesn't recognise as 'that name is a method', so it
+        raises instead of calling it:
+
+            Illegal argument - argument 1
+            - Required value is missing
+
+        `photoshop-python-api` works around this by flagging the methods it knows about,
+        but only on the object it was handed. Every child object, e.g. a Document, builds
+        a second Application object of its own, and that is the one this method calls, so
+        it is never flagged. The flag is applied here instead, where the object in use is
+        known.
+
+        Omitted arguments are left out of the call rather than passed as `None`, which
+        `comtypes` sends as a COM null, not as an absent value.
+
+    Args:
+        javascript: JavaScript code to execute.
+        Arguments: Arguments to pass to the code, if any.
+        ExecutionMode: Debugging mode to execute the code with, if any.
+
+    Returns:
+        Result of the executed JavaScript code.
+    """
+    executor = self.adobe if self._has_parent else self.app
+    if isinstance(executor, FullyDynamicDispatch):
+        executor._FlagAsMethod('doJavaScript')
+    args = [n for n in (Arguments, ExecutionMode) if n is not None]
+    return executor.doJavaScript(javascript, *args)
+
+
+# Replace the implementation on the base class, covering every Photoshop object which
+# inherits it, e.g. `Document.activeLayer` asks Photoshop for the active layer's type
+# this way on every single lookup
+Photoshop.eval_javascript = _eval_javascript
 
 
 """
