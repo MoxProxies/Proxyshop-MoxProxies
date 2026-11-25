@@ -11,7 +11,10 @@ from typing import Union, Any, Optional, TypedDict, Callable
 import winreg
 
 # Third Party
+from comtypes import GUID
+from comtypes.client.dynamic import _Dispatch as FullyDynamicDispatch
 from comtypes.client.lazybind import Dispatch
+from comtypes.typeinfo import ITypeInfo, LoadRegTypeLib, TKIND_DISPATCH
 from packaging.version import Version
 from photoshop.api import (
     ActionDescriptor,
@@ -126,6 +129,54 @@ for _year, _app_id in PS_VERSION_MAPPINGS.items():
 
 
 """
+* Photoshop Type Information
+"""
+
+# Adobe Photoshop Object Library, shipped in 'Required/Plug-ins/Extensions/ScriptingSupport.8li'
+PS_TYPE_LIBRARY = GUID('{E891EE9A-D0AE-4CB4-8871-F92C0109F18E}')
+
+
+@cache
+def get_application_typeinfo() -> Optional[ITypeInfo]:
+    """Returns the type information for Photoshop's Application interface, if the Photoshop
+    Object Library is registered with Windows.
+
+    Notes:
+        Photoshop 2027 answers 'Library not registered' when its Application object is asked
+        for type information, even with the library registered. Without it, comtypes falls
+        back to a fully dynamic wrapper which can't look up collection items by name, and
+        calls methods as property reads. Every other object reports its type normally.
+    """
+    with suppress(Exception):
+        lib = LoadRegTypeLib(PS_TYPE_LIBRARY, 1, 0)
+        for i in range(lib.GetTypeInfoCount()):
+            info = lib.GetTypeInfo(i)
+            if info.GetDocumentation(-1)[0] == '_Application' and info.GetTypeAttr().typekind == TKIND_DISPATCH:
+                return info
+    return None
+
+
+def with_application_typeinfo(app: Any) -> Any:
+    """Gives a fully dynamic Photoshop Application object the type information Photoshop
+    failed to provide, see `get_application_typeinfo`. Other objects are returned unchanged."""
+    if not isinstance(app, FullyDynamicDispatch):
+        return app
+    try:
+        app._comobj.GetTypeInfo(0)
+        return app
+    except COMError:
+        info = get_application_typeinfo()
+        return Dispatch(app._comobj, info) if info else app
+
+
+# Applies to every connection `photoshop-python-api` opens, including the ones each document
+# and layer object opens for itself to run JavaScript.
+_get_application_object = Photoshop._get_application_object
+Photoshop._get_application_object = lambda self, versions=None: with_application_typeinfo(
+    _get_application_object(self, versions))
+
+
+"""
 * Util Classes
 """
 
@@ -230,14 +281,20 @@ class PhotoshopHandler(ApplicationHandler):
         """Replace the existing Photoshop Application instance with a new one."""
         if not self.is_running():
             try:
-                # Load Photoshop and default preferences
+                # Load Photoshop
                 self._version = None
                 super(PhotoshopHandler, self).__init__(env=self._env)
-                self.preferences.rulerUnits = Units.Pixels
-                self.preferences.typeUnits = Units.Points
             except Exception as e:
                 # Photoshop is either busy or unresponsive
                 return OSError(get_photoshop_error_message(e))
+
+        # Measurements assume pixel rulers and point type. Apply these on every refresh, not
+        # only when Photoshop is reconnected, since the user may change them between renders.
+        try:
+            self.preferences.rulerUnits = Units.Pixels
+            self.preferences.typeUnits = Units.Points
+        except Exception as e:
+            return OSError(get_photoshop_error_message(e))
         return
 
     """
