@@ -3,7 +3,7 @@
 """
 # Standard Library Imports
 from contextlib import suppress
-from typing import Optional, Union, Iterable
+from typing import Any, Optional, Union, Iterable
 
 # Third Party Imports
 from photoshop.api import DialogModes, ActionDescriptor, ActionReference, BlendMode
@@ -13,11 +13,104 @@ from photoshop.api._layerSet import LayerSet
 
 # Local Imports
 from src import APP, ENV
-from src.utils.adobe import LayerContainer, LayerContainerTypes, ReferenceLayer, PS_EXCEPTIONS
+from src.utils.adobe import LayerContainer, LayerContainerTypes, ReferenceLayer
 
 # QOL Definitions
 sID, cID = APP.stringIDToTypeID, APP.charIDToTypeID
 NO_DIALOG = DialogModes.DisplayNoDialogs
+
+
+"""
+* Resolving Names
+"""
+
+
+def describe_group(group: Any) -> str:
+    """Describes a group reference for a diagnostic message.
+
+    Args:
+        group: Group reference as passed to a lookup.
+
+    Returns:
+        Readable description of the group.
+    """
+    if not group:
+        return 'active document'
+    if isinstance(group, str):
+        return group
+    if isinstance(group, (tuple, list)):
+        return ' -> '.join(describe_group(g) for g in group)
+    name = getattr(group, 'name', None)
+    return str(name) if name else type(group).__name__
+
+
+def find_in_collection(collection: Any, name: str) -> Optional[Any]:
+    """Finds an item in a Photoshop collection by name.
+
+    Notes:
+        Indexing a collection by name, e.g. `doc.layerSets['Text and Icons']`, reaches
+        `comtypes`' fully dynamic dispatch, whose `__getitem__` accepts only an integer
+        index. A string raises TypeError there, in every released version of comtypes:
+
+            TypeError: '>' not supported between instances of 'str' and 'int'
+
+        Which dispatch Photoshop hands back varies by version and by the state of the
+        typelib cache, so the same lookup can work on one machine and fail on another.
+        The index is attempted first, because Photoshop resolves it without reading
+        every item, then the collection is scanned, which works on any dispatch.
+
+    Args:
+        collection: Photoshop collection to search, e.g. `layerSets` or `artLayers`.
+        name: Name of the item to find.
+
+    Returns:
+        The item if found, otherwise None.
+    """
+    # Let Photoshop resolve the name where the dispatch supports it
+    with suppress(Exception):
+        found = collection[name]
+        if found is not None:
+            return found
+
+    # Scan the collection, which every dispatch type supports
+    with suppress(Exception):
+        for item in collection:
+            with suppress(Exception):
+                if item.name == name:
+                    return item
+    return None
+
+
+def resolve_container(
+    group: Union[str, None, list[str], LayerContainerTypes, Iterable[LayerContainerTypes]]
+) -> Optional[Any]:
+    """Resolves a group reference to the container its layers live in.
+
+    Args:
+        group: Parent group as a name, an object, or an ordered list of either. Uses the
+            active document when not provided.
+
+    Returns:
+        The container to search, or None if a named group in the path wasn't found.
+    """
+    if not group:
+        return APP.activeDocument
+    if isinstance(group, str):
+        return find_in_collection(APP.activeDocument.layerSets, group)
+    if isinstance(group, LayerContainer):
+        return group
+    if isinstance(group, (tuple, list)):
+        container = APP.activeDocument
+        for g in group:
+            if container is None:
+                return None
+            if isinstance(g, str):
+                container = find_in_collection(container.layerSets, g)
+            else:
+                # An object was given, which becomes the container outright
+                container = g
+        return container
+    return None
 
 
 """
@@ -38,38 +131,16 @@ def getLayer(
     Returns:
         Layer object requested
     """
-    try:
-        # LayerSet provided?
-        if not group:
-            # LayerSet not provided
-            return APP.activeDocument.artLayers[name]
-        elif isinstance(group, str):
-            # LayerSet name given
-            return APP.activeDocument.layerSets[group].artLayers[name]
-        elif isinstance(group, LayerContainer):
-            # LayerSet object given
-            return group.artLayers[name]
-        elif isinstance(group, (tuple, list)):
-            # Tuple or list of LayerSets
-            layer_set = APP.activeDocument
-            for g in group:
-                if isinstance(g, str):
-                    # LayerSet name given
-                    layer_set = layer_set.layerSets[g]
-                elif isinstance(g, LayerContainer):
-                    # LayerSet object given
-                    layer_set = g
-            return layer_set.artLayers[name]
-        # ArtLayer can't be located
-        raise OSError("ArtLayer invalid")
-    except PS_EXCEPTIONS:
-        # Layer couldn't be found
-        if ENV.DEV_MODE:
-            print(f'Layer "{name}" could not be found!')
-            if group and isinstance(group, LayerSet):
-                print(f"LayerSet reference used: {group.name}")
-            elif group and isinstance(group, str):
-                print(f"LayerSet reference used: {group}")
+    container = resolve_container(group)
+    if container is not None:
+        layer = find_in_collection(container.artLayers, name)
+        if layer is not None:
+            return layer
+
+    # Layer couldn't be found
+    if ENV.DEV_MODE:
+        print(f'Layer "{name}" could not be found!')
+        print(f'LayerSet reference used: {describe_group(group)}')
     return
 
 
@@ -86,38 +157,16 @@ def getLayerSet(
     Returns:
         Group object requested.
     """
-    try:
-        # Was LayerSet provided?
-        if not group:
-            # No LayerSet given
-            return APP.activeDocument.layerSets[name]
-        elif isinstance(group, str):
-            # LayerSet name given
-            return APP.activeDocument.layerSets[group].layerSets[name]
-        elif isinstance(group, (tuple, list)):
-            # Tuple or list of groups
-            layer_set = APP.activeDocument
-            for g in group:
-                if isinstance(g, str):
-                    # LayerSet name given
-                    layer_set = layer_set.layerSets[g]
-                elif isinstance(g, LayerContainer):
-                    # LayerSet object given
-                    layer_set = g
-            return layer_set.layerSets[name]
-        elif isinstance(group, LayerContainer):
-            # LayerSet object given
-            return group.layerSets[name]
-        # LayerSet can't be located
-        raise OSError("LayerSet invalid")
-    except PS_EXCEPTIONS:
-        # LayerSet couldn't be found
-        if ENV.DEV_MODE:
-            print(f'LayerSet "{name}" could not be found!')
-            if group and isinstance(group, LayerSet):
-                print(f"LayerSet reference used: {group.name}")
-            elif group and isinstance(group, str):
-                print(f"LayerSet reference used: {group}")
+    container = resolve_container(group)
+    if container is not None:
+        layer_set = find_in_collection(container.layerSets, name)
+        if layer_set is not None:
+            return layer_set
+
+    # LayerSet couldn't be found
+    if ENV.DEV_MODE:
+        print(f'LayerSet "{name}" could not be found!')
+        print(f'LayerSet reference used: {describe_group(group)}')
     return
 
 
@@ -135,19 +184,18 @@ def get_reference_layer(name: str, group: Union[None, str, LayerSet] = None) -> 
     """
 
     # Select the proper group if str or None provided
-    if not group:
-        group = APP.activeDocument
-    if isinstance(group, str):
-        try:
-            group = APP.activeDocument.layerSets[group]
-        except PS_EXCEPTIONS:
-            group = APP.activeDocument
+    container = resolve_container(group) or APP.activeDocument
 
     # Select the reference layer
     with suppress(Exception):
-        return ReferenceLayer(
-            parent=group.artLayers.app[name],
-            app=APP)
+        found = find_in_collection(container.artLayers, name)
+        if found is not None:
+            # ReferenceLayer wraps the underlying layer object
+            return ReferenceLayer(
+                parent=getattr(found, 'app', found),
+                app=APP)
+    if ENV.DEV_MODE:
+        print(f'Reference layer "{name}" could not be found!')
     return None
 
 
