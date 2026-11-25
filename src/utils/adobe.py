@@ -131,6 +131,91 @@ for _year, _app_id in PS_VERSION_MAPPINGS.items():
 """
 
 
+PS_METHOD_NAMES: tuple[str, ...] = (
+    'Flatten', 'add', 'adjustBrightnessContrast', 'adjustColorBalance', 'adjustCurves',
+    'adjustLevels', 'apply', 'applyAddNoise', 'applyAverage', 'applyBlur', 'applyBlurMore',
+    'applyClouds', 'applyCustomFilter', 'applyDeInterlace', 'applyDespeckle',
+    'applyDifferenceClouds', 'applyDiffuseGlow', 'applyDisplace', 'applyDustAndScratches',
+    'applyGaussianBlur', 'applyGlassEffect', 'applyHighPass', 'applyLensBlur',
+    'applyLensFlare', 'applyMaximum', 'applyMedianNoise', 'applyMinimum', 'applyMotionBlur',
+    'applyNTSC', 'applyOceanRipple', 'applyOffset', 'applyPinch', 'autoCount', 'batch',
+    'changeMode', 'charIDToTypeID', 'clear', 'close', 'contract', 'convertProfile',
+    'convertToShape', 'copy', 'createPath', 'crop', 'cut', 'delete', 'deleteMeasurements',
+    'deselect', 'doAction', 'doJavaScript', 'duplicate', 'erase', 'eraseCustomOptions',
+    'executeAction', 'executeActionGet', 'expand', 'export', 'exportMeasurements', 'feather',
+    'featureEnabled', 'fill', 'fromStream', 'getBoolean', 'getClass', 'getContainer',
+    'getCustomOptions', 'getData', 'getDesiredClass', 'getDouble', 'getEnumeratedType',
+    'getEnumeratedValue', 'getEnumerationType', 'getEnumerationValue', 'getForm',
+    'getIdentifier', 'getIndex', 'getInteger', 'getKey', 'getLargeInteger', 'getList',
+    'getObjectType', 'getObjectValue', 'getPath', 'getReference', 'getString', 'getType',
+    'getUnitDoubleType', 'getUnitDoubleValue', 'grow', 'hasKey', 'invert', 'isEqual',
+    'isQuicktimeAvailable', 'item', 'link', 'load', 'makeWorkPath', 'merge',
+    'mergeVisibleLayers', 'move', 'open', 'openDialog', 'posterize', 'printOneCopy', 'purge',
+    'putBoolean', 'putClass', 'putCustomOptions', 'putData', 'putDouble', 'putEnumerated',
+    'putIdentifier', 'putIndex', 'putInteger', 'putLargeInteger', 'putList', 'putName',
+    'putObject', 'putOffset', 'putPath', 'putProperty', 'putReference', 'putString',
+    'putUnitDouble', 'rasterize', 'rasterizeAllLayers', 'recapture', 'recordMeasurements',
+    'refresh', 'remove', 'removeAll', 'resetfromComp', 'resize', 'resizeBoundary',
+    'resizeImage', 'revealAll', 'rotate', 'rotateBoundary', 'save', 'saveAs', 'select',
+    'selectBorder', 'similar', 'smooth', 'splitChannels', 'store', 'stringIDToTypeID',
+    'stroke', 'toSteadm', 'toolSupportsBrushes', 'toolSupportsPresets', 'translate',
+    'translateBoundary', 'trap', 'trim', 'typeIDToCharID', 'typeIDToStringID', 'unlink')
+
+
+def flag_photoshop_methods(obj: Any) -> Any:
+    """Tells `comtypes` which of a COM object's names are methods rather than properties.
+
+    Notes:
+        `comtypes` reads a type library to tell a method from a property. Photoshop
+        doesn't always provide one, and `comtypes` then falls back to a dispatch which
+        guesses: it fetches the name as a property, and treats the name as a method only
+        if that fails in one of a few specific ways. Photoshop runs the method with no
+        arguments instead, so the guess lands anywhere between an exception and a quiet
+        `None`, which fails later as:
+
+            TypeError: 'NoneType' object is not callable
+
+        `photoshop-python-api` flags the methods it knows about, but a class only flags
+        its own, and the lists have holes: `ArtLayer` never flags `resize`, `rotate` or
+        `translate`, all of which this project calls. Flagging every known name on every
+        object closes the holes, and is safe to do: an unknown name still fails on
+        `IDispatch::GetIDsOfNames` before the flag is ever consulted.
+
+    Args:
+        obj: COM object, or anything else, in which case nothing is done.
+
+    Returns:
+        The object it was given.
+    """
+    if isinstance(obj, FullyDynamicDispatch):
+        with suppress(Exception):
+            obj._FlagAsMethod(*PS_METHOD_NAMES)
+    return obj
+
+
+_photoshop_init = Photoshop.__init__
+
+
+def _init_photoshop_object(self: Photoshop, *args, **kwargs) -> None:
+    """Initializes a Photoshop object, then flags the methods on the COM objects it holds.
+
+    Notes:
+        Wrapped around the `photoshop-python-api` initializer so that every Photoshop
+        object is covered, including the second Application object each child object
+        quietly builds for itself, which nothing else flags.
+
+        The objects are read out of the instance dictionary directly, because an
+        unknown attribute on a Photoshop object is forwarded to Photoshop, which answers
+        a name it doesn't have by raising.
+    """
+    _photoshop_init(self, *args, **kwargs)
+    for name in ('app', 'adobe'):
+        flag_photoshop_methods(self.__dict__.get(name))
+
+
+Photoshop.__init__ = _init_photoshop_object
+
+
 def _eval_javascript(
     self: Photoshop,
     javascript: str,
