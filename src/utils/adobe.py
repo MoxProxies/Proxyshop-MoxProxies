@@ -193,27 +193,36 @@ def flag_photoshop_methods(obj: Any) -> Any:
     return obj
 
 
-_photoshop_init = Photoshop.__init__
+_dynamic_dispatch_init = FullyDynamicDispatch.__init__
 
 
-def _init_photoshop_object(self: Photoshop, *args, **kwargs) -> None:
-    """Initializes a Photoshop object, then flags the methods on the COM objects it holds.
+def _init_dynamic_dispatch(self: FullyDynamicDispatch, *args, **kwargs) -> None:
+    """Creates a guessing dispatch, with Photoshop's methods already flagged.
 
     Notes:
-        Wrapped around the `photoshop-python-api` initializer so that every Photoshop
-        object is covered, including the second Application object each child object
-        quietly builds for itself, which nothing else flags.
+        Every COM object `comtypes` hands back passes through here. A dispatch returned
+        from a call is built by the VARIANT conversion in `comtypes.automation`, which
+        routes it through `comtypes.client.dynamic.Dispatch`, so an ActionDescriptor
+        returned by `executeActionGet` arrives the same way the application object does.
 
-        The objects are read out of the instance dictionary directly, because an
-        unknown attribute on a Photoshop object is forwarded to Photoshop, which answers
-        a name it doesn't have by raising.
+        That makes this the one place where every object can be told which of its names
+        are methods. Flagging objects individually can't cover the ones which are never
+        wrapped, e.g.:
+
+            desc = APP.executeActionGet(ref)
+            layer_fx = desc.getObjectValue(sID('layerEffects'))
+
+        Both descriptors are raw COM objects, and `getObjectValue` would be fetched as
+        a property on the first of them.
+
+        This applies to every COM object in the process, not just Photoshop's, which is
+        the right trade here: Photoshop is the only COM server this app talks to.
     """
-    _photoshop_init(self, *args, **kwargs)
-    for name in ('app', 'adobe'):
-        flag_photoshop_methods(self.__dict__.get(name))
+    _dynamic_dispatch_init(self, *args, **kwargs)
+    flag_photoshop_methods(self)
 
 
-Photoshop.__init__ = _init_photoshop_object
+FullyDynamicDispatch.__init__ = _init_dynamic_dispatch
 
 
 def _eval_javascript(

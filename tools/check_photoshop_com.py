@@ -24,7 +24,7 @@ import winreg
 # Third Party
 from comtypes.automation import IDispatch
 from comtypes.client import CreateObject
-from comtypes.typeinfo import LoadTypeLibEx, REGKIND_NONE
+from comtypes.typeinfo import LoadTypeLibEx, REGKIND_NONE, REGKIND_REGISTER
 from comtypes.client.dynamic import _Dispatch as FullyDynamicDispatch
 from comtypes.client.lazybind import Dispatch as LazyDispatch
 
@@ -117,15 +117,29 @@ def report_type_library(app_id: str) -> None:
     install = get_install_path(app_id)
     candidates = [*registered]
     if install:
-        candidates += [os.path.join(install, n) for n in ('Photoshop.exe', 'Photoshop.tlb')]
+        # Photoshop's type library lives in its scripting plugin, not in the executable
+        candidates += [
+            os.path.join(install, 'Required', 'Plug-ins', 'Extensions', 'ScriptingSupport.8li'),
+            os.path.join(install, 'Required', 'ScriptingSupport.8li'),
+            os.path.join(install, 'Photoshop.exe'),
+            os.path.join(install, 'Photoshop.tlb')]
+    loadable = ''
     for path in dict.fromkeys(candidates):
         if not os.path.isfile(path):
             continue
         try:
             LoadTypeLibEx(path, REGKIND_NONE)
             print(f'  LOADS OK   : {path}')
+            loadable = loadable or path
         except Exception as e:
             print(f'  cannot load: {path} -- {type(e).__name__}: {e}')
+
+    if loadable and loadable not in registered:
+        print('\n  This type library loads, but the registry points somewhere else.')
+        print('  Re-registering it would fix Photoshop scripting for every program on')
+        print('  this machine, not just Proxyshop. It writes to HKEY_CLASSES_ROOT, so')
+        print('  it needs an administrator terminal:')
+        print(f'\n    poetry run python tools/check_photoshop_com.py --register {app_id}\n')
 
 
 def describe_dispatch(app_id: str) -> None:
@@ -166,12 +180,59 @@ def describe_dispatch(app_id: str) -> None:
         report_type_library(app_id)
 
 
-def main() -> int:
-    """Reports on every Photoshop install found.
+def register_type_library(app_id: str) -> int:
+    """Registers a Photoshop release's type library at its real location.
+
+    Notes:
+        Only run deliberately, and only from an administrator terminal: this writes to
+        HKEY_CLASSES_ROOT. It repoints the registration at the file which is actually
+        installed, which is what an uninstalled older release leaves broken behind it.
+
+    Args:
+        app_id: Photoshop COM program ID, e.g. '210'.
 
     Returns:
         Process exit code.
     """
+    install = get_install_path(app_id)
+    if not install:
+        print(f'Photoshop {app_id} is not listed in the registry.')
+        return 1
+
+    for name in (
+        os.path.join('Required', 'Plug-ins', 'Extensions', 'ScriptingSupport.8li'),
+        os.path.join('Required', 'ScriptingSupport.8li'),
+    ):
+        path = os.path.join(install, name)
+        if not os.path.isfile(path):
+            continue
+        print(f'Registering: {path}')
+        try:
+            LoadTypeLibEx(path, REGKIND_REGISTER)
+        except Exception as e:
+            print(f'  Failed: {type(e).__name__}: {e}')
+            print('  Run this from a terminal opened with "Run as administrator".')
+            return 1
+        print('  Registered. Run this tool again without --register to confirm it took.')
+        return 0
+
+    print(f'No scripting plugin found under {install}')
+    return 1
+
+
+def main() -> int:
+    """Reports on every Photoshop install found, or registers a type library.
+
+    Returns:
+        Process exit code.
+    """
+    if '--register' in sys.argv:
+        index = sys.argv.index('--register')
+        if index + 1 >= len(sys.argv):
+            print('Usage: check_photoshop_com.py --register <program id, e.g. 210>')
+            return 1
+        return register_type_library(sys.argv[index + 1])
+
     print(f'Python  : {sys.version.split()[0]}')
     try:
         import comtypes

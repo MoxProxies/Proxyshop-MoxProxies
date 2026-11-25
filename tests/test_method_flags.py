@@ -34,7 +34,8 @@ ADOBE = REPO / 'src' / 'utils' / 'adobe.py'
 REQUIRED = (
     'doJavaScript', 'resize', 'rotate', 'translate', 'move', 'duplicate', 'remove',
     'delete', 'link', 'unlink', 'merge', 'rasterize', 'select', 'invert', 'close',
-    'executeAction', 'charIDToTypeID', 'stringIDToTypeID')
+    'executeAction', 'executeActionGet', 'charIDToTypeID', 'stringIDToTypeID',
+    'getObjectValue', 'putBoolean', 'putReference', 'putObject', 'putIdentifier')
 
 
 """
@@ -180,21 +181,50 @@ def test_methods_this_project_calls_are_flagged(name: str):
     assert name in load_adobe().PS_METHOD_NAMES
 
 
-def test_flags_are_applied_to_every_photoshop_object():
-    """Flagging a helper achieves nothing unless something calls it.
+def test_flags_are_applied_to_every_com_object():
+    """Flagging helper achieves nothing unless every COM object passes through it.
 
     Notes:
-        The initializer is wrapped rather than `_flag_as_method`, so that objects which
-        never flag anything of their own are covered too, including the second
-        Application object each child object quietly builds for itself.
+        The hook is on the `comtypes` dispatch rather than on Photoshop's wrapper
+        classes, because the objects which failed are never wrapped: an
+        ActionDescriptor returned by `executeActionGet` is built by `comtypes` itself.
     """
     tree = ast.parse(ADOBE.read_text(encoding='utf-8'), filename=str(ADOBE))
     assigned = [
         node for node in ast.walk(tree)
         if isinstance(node, ast.Assign)
         and any(isinstance(t, ast.Attribute) and t.attr == '__init__'
-                and isinstance(t.value, ast.Name) and t.value.id == 'Photoshop'
+                and isinstance(t.value, ast.Name) and t.value.id == 'FullyDynamicDispatch'
                 for t in node.targets)]
     assert assigned, (
-        'Photoshop.__init__ is never wrapped in adobe.py, so no Photoshop object is '
-        'given its method flags.')
+        "FullyDynamicDispatch.__init__ is never wrapped in adobe.py, so COM objects "
+        "comtypes returns are never given their method flags.")
+
+
+def test_descriptors_returned_from_a_call_are_covered():
+    """A descriptor handed back by Photoshop must be usable without being wrapped.
+
+    Notes:
+        This is the `apply_mask_to_layer_fx` failure: `executeActionGet` returns a raw
+        descriptor, and reading `getObjectValue` off it as a property produced
+        'Illegal argument - argument 1 - Required value is missing'.
+    """
+    flag = load_adobe().flag_photoshop_methods
+
+    class Descriptor:
+        """An ActionDescriptor behind a dispatch."""
+
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def getObjectValue(self, _key):
+            self.calls.append('getObjectValue')
+            return 'layer effects'
+
+    # Stands in for the dispatch comtypes builds around a returned COM pointer
+    returned = DynamicDispatch(Descriptor())
+    assert returned.getObjectValue is None, 'the model no longer reproduces the failure'
+
+    flag(DynamicDispatch(Descriptor()))
+    covered = flag(DynamicDispatch(Descriptor()))
+    assert covered.getObjectValue(1) == 'layer effects'

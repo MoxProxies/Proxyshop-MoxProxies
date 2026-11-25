@@ -14,11 +14,7 @@ from photoshop.api._layerSet import LayerSet
 
 # Local Imports
 from src import APP, ENV
-from src.utils.adobe import (
-    flag_photoshop_methods,
-    LayerContainer,
-    LayerContainerTypes,
-    ReferenceLayer)
+from src.utils.adobe import LayerContainer, LayerContainerTypes, ReferenceLayer
 
 # QOL Definitions
 sID, cID = APP.stringIDToTypeID, APP.charIDToTypeID
@@ -101,14 +97,14 @@ def find_in_collection(collection: Any, name: str) -> Optional[Any]:
     with suppress(Exception):
         found = collection[name]
         if found is not None:
-            return flag_photoshop_methods(found)
+            return found
 
     # Scan the collection, which every dispatch type supports
     with suppress(Exception):
         for item in collection:
             with suppress(Exception):
                 if item.name == name:
-                    return flag_photoshop_methods(item)
+                    return item
     return None
 
 

@@ -139,8 +139,6 @@ def load_helpers(document: Item) -> types.ModuleType:
         'APP': types.SimpleNamespace(activeDocument=document),
         'LayerContainer': Item,
         'Photoshop': Wrapper,
-        # Flagging a found layer's methods is covered by tests/test_method_flags.py
-        'flag_photoshop_methods': lambda obj: obj,
     })
     sys.modules['layers_helpers'] = module
     exec(compile(ast.Module(body=found, type_ignores=[]), str(LAYERS), 'exec'), module.__dict__)
