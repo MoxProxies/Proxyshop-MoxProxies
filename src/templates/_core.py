@@ -3,7 +3,6 @@
 """
 # Standard Library Imports
 import os.path as osp
-from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
 from threading import Event
@@ -514,9 +513,9 @@ class BaseTemplate:
     """
 
     @cached_property
-    def legal_group(self) -> LayerSet:
-        """LayerSet: Group containing artist credit, collector info, and other legal details."""
-        return self.docref.layerSets[LAYERS.LEGAL]
+    def legal_group(self) -> Optional[LayerSet]:
+        """Optional[LayerSet]: Group containing artist credit, collector info, and other legal details."""
+        return psd.getLayerSet(LAYERS.LEGAL, self.docref)
 
     @cached_property
     def border_group(self) -> Optional[Union[LayerSet, ArtLayer]]:
@@ -529,9 +528,19 @@ class BaseTemplate:
 
     @cached_property
     def text_group(self) -> Optional[LayerSet]:
-        """Optional[LayerSet]: Text and icon group, contains rules text and necessary symbols."""
-        with suppress(Exception):
-            return self.docref.layerSets[LAYERS.TEXT_AND_ICONS]
+        """Optional[LayerSet]: Text and icon group, contains rules text and necessary symbols.
+
+        Notes:
+            Falls back to the document when the group is absent, since a few templates
+            keep their text layers at the top level. The fallback is logged, because
+            silently searching the whole document makes every nested lookup which
+            depends on this group fail somewhere far from the real cause.
+        """
+        if group := psd.getLayerSet(LAYERS.TEXT_AND_ICONS, self.docref):
+            return group
+        self.log(
+            f"Group '{LAYERS.TEXT_AND_ICONS}' not found in this template, "
+            f"searching the whole document instead.")
         return self.docref
 
     @cached_property
@@ -546,10 +555,8 @@ class BaseTemplate:
 
     @cached_property
     def mask_group(self) -> Optional[LayerSet]:
-        """LayerSet: Group containing masks used to blend and adjust various layers."""
-        with suppress(Exception):
-            return self.docref.layerSets[LAYERS.MASKS]
-        return
+        """Optional[LayerSet]: Group containing masks used to blend and adjust various layers."""
+        return psd.getLayerSet(LAYERS.MASKS, self.docref)
 
     """
     * Text Layers
