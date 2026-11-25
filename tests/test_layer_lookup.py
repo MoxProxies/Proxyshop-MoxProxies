@@ -35,13 +35,35 @@ LAYERS = REPO / 'src' / 'helpers' / 'layers.py'
 """
 
 
+class COMError(Exception):
+    """`_ctypes.COMError`, which is not an AttributeError."""
+
+
 class Item:
-    """A layer or group, holding nested collections."""
+    """A layer or group, holding nested collections.
+
+    Notes:
+        Asking a COM object for a name it doesn't have raises `COMError` out of
+        `IDispatch::GetIDsOfNames`, rather than reporting a missing attribute, which
+        is what `getattr` and `hasattr` look for.
+    """
 
     def __init__(self, name: str, layer_sets=None, art_layers=None, strict: bool = False):
         self.name = name
         self.layerSets = Collection(layer_sets or [], strict=strict)
         self.artLayers = Collection(art_layers or [], strict=strict)
+
+    def __getattr__(self, name: str):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        raise COMError(-2147352570, 'Unknown name.', (None, None, None, 0, None))
+
+
+class Wrapper:
+    """A `photoshop-python-api` wrapper, which holds its COM object as `app`."""
+
+    def __init__(self, app: Item):
+        self.app = app
 
 
 class Collection:
@@ -104,7 +126,7 @@ def load_helpers(document: Item) -> types.ModuleType:
         A module holding the lookup helpers.
     """
     tree = ast.parse(LAYERS.read_text(encoding='utf-8'), filename=str(LAYERS))
-    wanted = {'find_in_collection', 'resolve_container', 'describe_group'}
+    wanted = {'find_in_collection', 'resolve_container', 'describe_group', 'unwrap_layer'}
     found = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
     missing = wanted - {n.name for n in found}
     assert not missing, f'helpers no longer defined in layers.py: {sorted(missing)}'
@@ -116,6 +138,7 @@ def load_helpers(document: Item) -> types.ModuleType:
         'suppress': __import__('contextlib').suppress,
         'APP': types.SimpleNamespace(activeDocument=document),
         'LayerContainer': Item,
+        'Photoshop': Wrapper,
     })
     sys.modules['layers_helpers'] = module
     exec(compile(ast.Module(body=found, type_ignores=[]), str(LAYERS), 'exec'), module.__dict__)
@@ -180,3 +203,78 @@ def test_describe_group_reads_clearly(group, expected):
     """A failed lookup names the group path it searched."""
     helpers = load_helpers(build_document(strict=False))
     assert helpers.describe_group(group) == expected
+
+
+def test_unwrap_layer_leaves_a_raw_com_object_alone():
+    """A raw COM object must come back untouched, not raise.
+
+    Notes:
+        `getattr(layer, 'app', layer)` was used here. A COM object answers an unknown
+        name with `COMError`, which `getattr` doesn't treat as a missing attribute, so
+        the default was never returned. The error escaped into the caller's
+        `suppress`, the reference layer read as missing, and the render died later on
+        `'NoneType' object has no attribute 'bounds'`.
+    """
+    helpers = load_helpers(build_document(strict=False))
+    layer = Item('Art Frame Tall')
+    assert helpers.unwrap_layer(layer) is layer
+
+
+def test_unwrap_layer_unwraps_a_wrapper():
+    """A wrapped layer must give up the COM object it holds."""
+    helpers = load_helpers(build_document(strict=False))
+    layer = Item('Art Frame Tall')
+    assert helpers.unwrap_layer(Wrapper(layer)) is layer
+
+
+def test_the_model_refuses_an_unknown_name_the_way_com_does():
+    """The COM model must raise, and not an AttributeError, else this proves nothing."""
+    layer = Item('Art Frame Tall')
+    with pytest.raises(COMError):
+        _ = layer.app
+    assert not isinstance(COMError(), AttributeError)
+    with pytest.raises(COMError):
+        # The reason the old code failed: the default is never reached
+        getattr(layer, 'app', layer)
+
+
+class Unreadable:
+    """A COM object which refuses every name, e.g. a layer which has been deleted."""
+
+    def __getattr__(self, name: str):
+        raise COMError(-2147352570, 'Unknown name.', (None, None, None, 0, None))
+
+
+def test_describe_group_survives_an_unreadable_object():
+    """Describing a group must never raise, it only ever builds a message.
+
+    Notes:
+        It is called while reporting a failed lookup, so raising here would replace the
+        diagnostic with an error about the diagnostic.
+    """
+    helpers = load_helpers(build_document(strict=False))
+    assert helpers.describe_group(Item('Text and Icons')) == 'Text and Icons'
+    assert helpers.describe_group(Unreadable()) == 'Unreadable'
+
+
+def test_reference_layers_are_unwrapped_through_the_helper():
+    """`get_reference_layer` must not probe the layer it found with `getattr`.
+
+    Notes:
+        The probe is what broke: a COM object raises rather than reporting a missing
+        attribute, so the lookup reported the layer as missing.
+    """
+    tree = ast.parse(LAYERS.read_text(encoding='utf-8'), filename=str(LAYERS))
+    found = [n for n in tree.body
+             if isinstance(n, ast.FunctionDef) and n.name == 'get_reference_layer']
+    assert found, 'get_reference_layer is no longer defined in layers.py'
+
+    calls = [n.func.id for n in ast.walk(found[0])
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    assert 'unwrap_layer' in calls, (
+        'get_reference_layer no longer unwraps the layer it found through unwrap_layer.')
+    assert not [n for n in ast.walk(found[0])
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == 'getattr' and len(n.args) > 2], (
+        'get_reference_layer probes the layer with a defaulted getattr, which a COM '
+        'object answers by raising rather than by reporting a missing attribute.')

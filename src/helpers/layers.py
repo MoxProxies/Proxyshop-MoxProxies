@@ -8,6 +8,7 @@ from typing import Any, Optional, Union, Iterable
 # Third Party Imports
 from photoshop.api import DialogModes, ActionDescriptor, ActionReference, BlendMode
 from photoshop.api._artlayer import ArtLayer
+from photoshop.api._core import Photoshop
 from photoshop.api._document import Document
 from photoshop.api._layerSet import LayerSet
 
@@ -40,8 +41,34 @@ def describe_group(group: Any) -> str:
         return group
     if isinstance(group, (tuple, list)):
         return ' -> '.join(describe_group(g) for g in group)
-    name = getattr(group, 'name', None)
-    return str(name) if name else type(group).__name__
+    with suppress(Exception):
+        if name := group.name:
+            return str(name)
+    return type(group).__name__
+
+
+def unwrap_layer(layer: Any) -> Any:
+    """Returns the Photoshop COM object behind a `photoshop-python-api` wrapper.
+
+    Notes:
+        Scanning a collection yields raw COM objects, while indexing one by name yields
+        wrapper objects, so a lookup can produce either and the COM object is what gets
+        wrapped again.
+
+        `getattr(layer, 'app', layer)` can't tell the two apart. A raw COM object
+        answers an unknown name by raising `COMError` from `IDispatch::GetIDsOfNames`,
+        which `getattr` doesn't treat as a missing attribute, so the default is never
+        returned and the error escapes instead.
+
+    Args:
+        layer: Layer object, either wrapped or raw.
+
+    Returns:
+        The COM object the layer is backed by.
+    """
+    if isinstance(layer, Photoshop):
+        return layer.app
+    return layer
 
 
 def find_in_collection(collection: Any, name: str) -> Optional[Any]:
@@ -192,10 +219,11 @@ def get_reference_layer(name: str, group: Union[None, str, LayerSet] = None) -> 
         if found is not None:
             # ReferenceLayer wraps the underlying layer object
             return ReferenceLayer(
-                parent=getattr(found, 'app', found),
+                parent=unwrap_layer(found),
                 app=APP)
     if ENV.DEV_MODE:
         print(f'Reference layer "{name}" could not be found!')
+        print(f'LayerSet reference used: {describe_group(group)}')
     return None
 
 

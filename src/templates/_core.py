@@ -690,7 +690,17 @@ class BaseTemplate:
             if layer := psd.get_reference_layer(self.art_frame_vertical):
                 return layer
         # Check for normal art frame
-        return psd.get_reference_layer(self.art_frame) or psd.get_reference_layer(LAYERS.ART_FRAME)
+        if layer := psd.get_reference_layer(self.art_frame):
+            return layer
+        if layer := psd.get_reference_layer(LAYERS.ART_FRAME):
+            return layer
+
+        # Without a reference the art can't be scaled or positioned, and the render dies
+        # several steps later on a layer which was never found, so say so here
+        raise OSError(
+            f"This template has no art reference layer, so the artwork can't be scaled or "
+            f"positioned.\nLooked for a layer named '{self.art_frame}', then one named "
+            f"'{LAYERS.ART_FRAME}', at the top level of the document.")
 
     @cached_property
     def name_reference(self) -> Optional[ArtLayer]:
